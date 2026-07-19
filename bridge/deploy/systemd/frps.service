@@ -1,0 +1,23 @@
+# Install on the Tencent Cloud server: /etc/systemd/system/frps.service
+# then: systemctl daemon-reload && systemctl enable --now frps
+
+[Unit]
+Description=frp server (codex-remote relay)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as an unprivileged user you created (e.g. `useradd -r -s /usr/sbin/nologin frp`).
+User=frp
+ExecStart=/usr/local/bin/frps -c /etc/frp/frps.toml
+Restart=always
+RestartSec=5
+# Light hardening.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

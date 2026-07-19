@@ -1,0 +1,32 @@
+/* 全局样式 —— Caret 品牌：靛紫 #6E56CF + 墨色 + 浅底 */
+page {
+  --indigo: #6E56CF;
+  --ink: #14131a;
+  --muted: #6b6878;
+  --faint: #908da0;
+  --line: #e8e7f0;
+  --bg: #f7f7fb;
+  --surface: #ffffff;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 30rpx;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button { padding: 0; margin: 0; font-size: 30rpx; line-height: normal; background: transparent; }
+button::after { border: none; }
+
+.btn-primary {
+  background: var(--indigo); color: #fff; border-radius: 999rpx;
+  height: 92rpx; line-height: 92rpx; text-align: center; font-weight: 600;
+}
+.btn-primary.disabled { opacity: .55; }
+.btn-dark {
+  background: var(--ink); color: #fff; border-radius: 28rpx;
+  height: 96rpx; line-height: 96rpx; text-align: center; font-weight: 600;
+}
+.btn-ghost {
+  background: var(--surface); color: var(--ink); border: 2rpx solid var(--line);
+  border-radius: 999rpx; height: 88rpx; line-height: 88rpx; text-align: center; font-weight: 600;
+}
+.mono { font-family: "SF Mono", Menlo, Consolas, monospace; }

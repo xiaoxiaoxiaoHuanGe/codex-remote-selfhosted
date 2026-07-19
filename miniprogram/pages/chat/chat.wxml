@@ -1,0 +1,47 @@
+<view class="chat">
+  <scroll-view scroll-y class="msgs" scroll-top="{{scrollTop}}" scroll-with-animation>
+    <block wx:for="{{items}}" wx:key="idx">
+      <view wx:if="{{item.role === 'user'}}" class="row right">
+        <view class="bub user">{{item.text}}</view>
+      </view>
+
+      <view wx:elif="{{item.role === 'reasoning'}}" class="think">
+        <view class="think-lbl">🧠 思考过程</view>
+        <view class="think-tx">{{item.text}}</view>
+      </view>
+
+      <view wx:elif="{{item.role === 'assistant'}}" class="row left">
+        <view class="bub ai">{{item.text}}</view>
+      </view>
+
+      <view wx:elif="{{item.role === 'tool'}}" class="tool mono">{{item.text}}</view>
+      <view wx:elif="{{item.role === 'file'}}" class="filepill mono">{{item.text}}</view>
+
+      <view wx:elif="{{item.role === 'image'}}" class="row left">
+        <image class="img" mode="widthFix" src="data:image/png;base64,{{item.imageB64}}"></image>
+      </view>
+
+      <view wx:else class="sys">{{item.text}}</view>
+    </block>
+    <view style="height:24rpx"></view>
+  </scroll-view>
+
+  <view wx:if="{{turnRunning}}" class="running">
+    <text class="dot">●</text> Codex 正在工作… <text class="stop" bindtap="interrupt">停止</text>
+  </view>
+
+  <view wx:if="{{approval}}" class="appr">
+    <view class="appr-h">⚠️ 需要你确认</view>
+    <view class="appr-cmd mono">{{approval.command}}</view>
+    <view class="appr-btns">
+      <button class="appr-no" bindtap="deny">拒绝</button>
+      <button class="appr-yes" bindtap="accept">同意</button>
+    </view>
+  </view>
+
+  <view class="composer">
+    <input class="cin" placeholder="输入提示词…" placeholder-class="cph"
+           value="{{draft}}" bindinput="onInput" confirm-type="send" bindconfirm="send" adjust-position="{{true}}" />
+    <button class="cbtn" bindtap="send">发送</button>
+  </view>
+</view>

@@ -1,0 +1,16 @@
+{
+  "description": "Caret 小程序轻量版（MVP 脚手架）",
+  "compileType": "miniprogram",
+  "libVersion": "latest",
+  "appid": "touristappid",
+  "projectname": "caret-miniprogram",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": false,
+    "bigPackageSizeSupport": true
+  },
+  "packOptions": { "ignore": [] }
+}

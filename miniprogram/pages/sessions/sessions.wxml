@@ -1,0 +1,38 @@
+<view class="top">
+  <view class="brand"><text class="mk mono">&gt;_</text> Caret</view>
+  <view class="pill {{stateClass}}">{{stateText}}</view>
+</view>
+
+<scroll-view scroll-y class="body">
+  <!-- 项目 -->
+  <view wx:if="{{projects.length}}" class="sec">项目</view>
+  <view wx:for="{{projects}}" wx:key="cwd" class="grp">
+    <view class="grp-head">
+      <text class="folder">📁</text>
+      <text class="grp-label">{{item.label}}</text>
+      <text class="count">{{item.items.length}}</text>
+    </view>
+    <view wx:for="{{item.items}}" wx:for-item="s" wx:key="id" class="sess" bindtap="open" data-id="{{s.id}}">
+      <view class="t">{{s.title}}</view>
+      <view class="m">{{s._rel}}</view>
+    </view>
+  </view>
+
+  <!-- 对话 -->
+  <view wx:if="{{loose.length}}" class="sec">对话</view>
+  <view wx:for="{{loose}}" wx:key="id" class="chatrow" bindtap="open" data-id="{{item.id}}">
+    <view class="cic">💬</view>
+    <view class="cmain"><view class="t">{{item.title}}</view></view>
+    <view class="ctime">{{item._rel}}</view>
+  </view>
+
+  <view wx:if="{{!projects.length && !loose.length}}" class="empty">
+    {{stateClass === 'connected' ? '暂无会话' : '正在连接电脑…'}}
+  </view>
+  <view class="spacer"></view>
+</scroll-view>
+
+<view class="actions">
+  <view class="repair" bindtap="repair">切换电脑</view>
+  <view class="fab" bindtap="newChat">＋ 新对话</view>
+</view>

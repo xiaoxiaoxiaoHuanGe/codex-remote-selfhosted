@@ -1,0 +1,22 @@
+# frpc — runs on the Mac, next to codexbridge.
+# `install-mac.sh` renders this into frpc.toml with the real token; you don't
+# normally edit the rendered file by hand.
+
+serverAddr = "example.com"
+serverPort = 7000
+
+# Must match frps.toml auth.token.
+auth.method = "token"
+auth.token = "__FRP_TOKEN__"
+
+# Encrypt the tunnel to frps (frps has transport.tls.force = true).
+transport.tls.enable = true
+
+# Expose the local bridge (127.0.0.1:8767) as 127.0.0.1:8700 on the server,
+# where nginx picks it up and serves it as wss://relay.example.com.
+[[proxies]]
+name = "codex-bridge"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8767
+remotePort = 8700

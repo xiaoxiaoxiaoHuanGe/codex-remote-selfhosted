@@ -1,0 +1,43 @@
+name: codex_remote_app
+description: "Remote control for your desktop Codex — list sessions, stream replies, approve commands."
+publish_to: 'none'
+version: 0.2.0+2
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  web_socket_channel: ^2.4.0
+  flutter_secure_storage: ^9.2.2
+  cupertino_icons: ^1.0.6
+  flutter_markdown: ^0.7.1
+  video_player: ^2.8.0
+  image_picker: ^1.1.0
+  speech_to_text: ^6.6.0
+  # 3.5.x is the last line built for AGP 7 (4.x needs AGP 8); QR scan on connect.
+  mobile_scanner: ^3.5.7
+  # E2EE control-plane: cryptography for the XChaCha20-Poly1305 envelope + HKDF +
+  # X25519 device keypair; pinenacl for the NaCl box that unseals the paired PSK.
+  cryptography: ^2.7.0
+  pinenacl: ^0.5.1 # 0.6.0 needs Dart 3.4; 0.5.x supports the bundled 3.3 SDK
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+# Custom launcher icon (green ">_" prompt on near-black). Generate with:
+#   flutter pub run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/foreground.png"

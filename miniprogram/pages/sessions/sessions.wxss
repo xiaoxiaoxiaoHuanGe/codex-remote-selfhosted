@@ -1,0 +1,35 @@
+.top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 24rpx 32rpx; background: var(--surface); border-bottom: 2rpx solid var(--line);
+}
+.brand { font-size: 36rpx; font-weight: 700; }
+.brand .mk { color: var(--indigo); margin-right: 8rpx; }
+.pill { font-size: 22rpx; font-weight: 600; padding: 6rpx 18rpx; border-radius: 999rpx; color: var(--faint); background: #f0eff5; }
+.pill.connected { color: #2f9e6b; background: #eafaf2; }
+.pill.connecting { color: #9a7b1f; background: #fbf4e0; }
+.pill.error { color: #d2576b; background: #fbe9ec; }
+
+.body { height: calc(100vh - 96rpx); padding: 20rpx 28rpx 0; box-sizing: border-box; }
+.sec { font-size: 22rpx; font-weight: 700; letter-spacing: 2rpx; color: var(--faint); margin: 24rpx 8rpx 14rpx; }
+
+.grp { background: var(--surface); border: 2rpx solid var(--line); border-radius: 22rpx; margin-bottom: 18rpx; overflow: hidden; }
+.grp-head { display: flex; align-items: center; padding: 22rpx 24rpx; font-weight: 600; font-size: 28rpx; }
+.folder { margin-right: 14rpx; }
+.grp-label { flex: 1; }
+.count { font-size: 22rpx; color: var(--faint); background: var(--bg); padding: 2rpx 16rpx; border-radius: 999rpx; }
+.sess { padding: 20rpx 24rpx 20rpx 56rpx; border-top: 2rpx solid #f0eff5; }
+.sess .t { font-size: 28rpx; font-weight: 600; }
+.sess .m { font-size: 22rpx; color: var(--faint); margin-top: 6rpx; }
+
+.chatrow { display: flex; align-items: center; background: var(--surface); border: 2rpx solid var(--line); border-radius: 20rpx; padding: 22rpx 24rpx; margin-bottom: 14rpx; }
+.cic { width: 56rpx; height: 56rpx; border-radius: 16rpx; background: #f3f0fd; display: flex; align-items: center; justify-content: center; margin-right: 20rpx; }
+.cmain { flex: 1; }
+.cmain .t { font-size: 28rpx; font-weight: 600; }
+.ctime { font-size: 22rpx; color: var(--faint); }
+
+.empty { text-align: center; color: var(--faint); font-size: 26rpx; margin-top: 120rpx; }
+.spacer { height: 180rpx; }
+
+.actions { position: fixed; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom)); }
+.repair { color: var(--muted); font-size: 26rpx; padding: 16rpx 8rpx; }
+.fab { background: var(--indigo); color: #fff; font-weight: 600; font-size: 28rpx; padding: 22rpx 40rpx; border-radius: 999rpx; box-shadow: 0 10rpx 24rpx rgba(110,86,207,.4); }

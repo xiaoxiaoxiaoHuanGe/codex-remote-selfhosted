@@ -1,0 +1,124 @@
+#!/bin/sh
+# postinstall — Caret macOS .pkg 的安装载荷(Installer.app 以 root 运行)。
+# 对当前登录用户完成:找 codex → 写 ~/.codex-remote 配置 → 装 launchd
+# (agent + 托盘)并立即拉起。安装不要订阅码:激活是装完后在菜单栏托盘里做
+# (「激活订阅码…」),agent 会守着凭证文件等待 —— 安装结果与订阅码/网络解耦。
+# 与 Windows 的 install-core.ps1 等价;TCC 教训沿用:二进制在 /usr/local(非
+# Documents 等受保护目录),日志走 ~/Library/Logs。
+set -eu
+
+HUB_WS="wss://relay.example.com/agent"
+BRIDGE="/usr/local/codex-remote/codexbridge"
+TRAY_APP="/Applications/Caret.app"
+
+CONSOLE_UID=$(stat -f%u /dev/console)
+CONSOLE_USER=$(stat -f%Su /dev/console)
+HOME_DIR=$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory | awk '{print $2}')
+
+# 以登录用户的 GUI 会话运行(弹窗可见、文件归属正确)
+as_user() { launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" "$@"; }
+dialog() { # dialog <文本> [按钮] — 给登录用户弹提示
+  launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" \
+    osascript -e "display dialog \"$1\" with title \"Caret\" buttons {\"${2:-好}\"} default button 1" >/dev/null 2>&1 || true
+}
+
+# ── 1. 找 codex(桌面 App 自带的原生二进制优先) ──
+CODEX="/Applications/Codex.app/Contents/Resources/codex"
+if [ ! -x "$CODEX" ]; then
+  CODEX=$(as_user /bin/zsh -lc 'command -v codex' 2>/dev/null || true)
+fi
+if [ -z "$CODEX" ] || [ ! -x "$CODEX" ]; then
+  dialog "没找到 Codex。请先安装 Codex 桌面版(或 npm i -g @openai/codex)再重新运行本安装包。"
+  exit 1
+fi
+
+# ── 2. 用户侧目录 ──
+CFG="$HOME_DIR/.codex-remote"
+LOGS="$HOME_DIR/Library/Logs/codex-remote"
+LA="$HOME_DIR/Library/LaunchAgents"
+install -d -o "$CONSOLE_USER" -m 700 "$CFG"
+install -d -o "$CONSOLE_USER" "$LOGS" "$LA"
+
+# ── 3. 机器 id + 手机配对 token(重装复用) ──
+# 机器 id 必须是 URL 安全的 ASCII(hub 只收 [a-z0-9._-]);中文主机名净化后
+# 为空时,退回硬件 UUID 派生的稳定 id(重装不变)。显示名(MNAME)保留原样。
+MID=$(hostname -s | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9._-')
+case "$MID" in
+  [a-z0-9]?*) ;; # 至少 2 字符且以字母数字开头
+  *)
+    HWUUID=$(ioreg -rd1 -c IOPlatformExpertDevice | awk -F'"' '/IOPlatformUUID/{print $4}')
+    MID="mac-$(printf '%s' "$HWUUID" | tr -d '-' | cut -c1-8 | tr '[:upper:]' '[:lower:]')"
+    ;;
+esac
+MNAME=$(scutil --get ComputerName 2>/dev/null || hostname -s)
+TOK_FILE="$CFG/machine-$MID.token"
+if [ ! -f "$TOK_FILE" ]; then
+  head -c 32 /dev/urandom | xxd -p | tr -d '\n' > "$TOK_FILE"
+  chown "$CONSOLE_USER" "$TOK_FILE"; chmod 600 "$TOK_FILE"
+fi
+
+# ── 4. 托盘配置(CRED_FILE/BRIDGE 供托盘的「激活订阅码…」使用;凭证文件
+#       此刻还不存在 —— agent 会轮询等它出现) ──
+CRED_FILE="$CFG/machine-cred"
+{
+  echo "MACHINE_ID=$MID"
+  echo "MACHINE_NAME=$MNAME"
+  echo "HUB=$HUB_WS"
+  echo "TOKEN=$(cat "$TOK_FILE")"
+  echo "CRED_FILE=$CRED_FILE"
+  echo "BRIDGE=$BRIDGE"
+} > "$CFG/menubar.env"
+chown "$CONSOLE_USER" "$CFG/menubar.env"; chmod 600 "$CFG/menubar.env"
+
+# ── 5. launchd:agent + 托盘,开机自启并立即拉起 ──
+AGENT_PLIST="$LA/com.example.caret.agent.plist"
+cat > "$AGENT_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.caret.agent</string>
+  <key>ProgramArguments</key><array>
+    <string>$BRIDGE</string>
+    <string>-codex</string><string>$CODEX</string>
+    <string>agent</string>
+    <string>-hub</string><string>$HUB_WS</string>
+    <string>-id</string><string>$MID</string>
+    <string>-name</string><string>$MNAME</string>
+    <string>-token-file</string><string>$TOK_FILE</string>
+    <string>-cred-file</string><string>$CRED_FILE</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOGS/agent.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/agent.log</string>
+</dict></plist>
+EOF
+
+TRAY_PLIST="$LA/com.example.caret.tray.plist"
+cat > "$TRAY_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.caret.tray</string>
+  <key>ProgramArguments</key><array>
+    <string>$TRAY_APP/Contents/MacOS/codexmenubar</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$LOGS/tray.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/tray.log</string>
+</dict></plist>
+EOF
+chown "$CONSOLE_USER" "$AGENT_PLIST" "$TRAY_PLIST"
+
+for P in "$AGENT_PLIST" "$TRAY_PLIST"; do
+  L=$(basename "$P" .plist)
+  launchctl bootout "gui/$CONSOLE_UID/$L" 2>/dev/null || true
+  launchctl bootstrap "gui/$CONSOLE_UID" "$P"
+done
+
+dialog "✓ Caret 已安装并启动。
+
+下一步:点菜单栏的 >_ 图标 → 「激活订阅码…」填入你的 crk_ 订阅码;
+激活后点「显示二维码…」,用手机 App 扫码即可连接这台电脑。"
+exit 0

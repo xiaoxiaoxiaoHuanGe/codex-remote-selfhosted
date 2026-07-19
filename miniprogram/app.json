@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/connect/connect",
+    "pages/sessions/sessions",
+    "pages/chat/chat"
+  ],
+  "window": {
+    "navigationBarTitleText": "Caret",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f7fb"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

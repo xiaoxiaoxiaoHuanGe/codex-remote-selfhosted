@@ -1,0 +1,30 @@
+# secrets — NEVER commit
+bridge/deploy/secrets*.env
+bridge/deploy/agent-*.env
+bridge/deploy/*.env
+bridge/deploy/frpc.toml
+*.token
+*.pem
+*.key
+
+# build artifacts
+bridge/bin/
+dist/
+
+# logs
+*.log
+
+# tool artifacts
+.codegraph/
+.cursor/
+.claude/
+bridge/*.exe
+
+# website installers — 走 GitHub Releases 分发，不入 git
+website/downloads/
+
+# local build outputs (installers are published to the download server, not git)
+bridge/codexmenubar
+bridge/codexbridge
+bridge/deploy/mac-pkg/Caret.pkg
+bridge/deploy/windows-installer/CodexRemoteSetup.exe

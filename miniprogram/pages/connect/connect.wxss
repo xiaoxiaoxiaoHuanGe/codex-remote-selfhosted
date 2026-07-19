@@ -1,0 +1,20 @@
+.wrap { padding: 80rpx 56rpx; display: flex; flex-direction: column; }
+.logo {
+  align-self: center; width: 132rpx; height: 132rpx; border-radius: 34rpx;
+  background: var(--surface); border: 2rpx solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 64rpx; font-weight: 700; color: var(--indigo);
+}
+.h1 { text-align: center; font-size: 48rpx; font-weight: 700; margin-top: 36rpx; }
+.sub { text-align: center; color: var(--muted); font-size: 27rpx; margin-top: 12rpx; }
+.scan { margin-top: 52rpx; }
+.or { display: flex; align-items: center; gap: 20rpx; margin: 40rpx 0 32rpx; color: var(--faint); font-size: 24rpx; }
+.or .ln { flex: 1; height: 2rpx; background: var(--line); }
+.inp {
+  background: var(--surface); border: 2rpx solid var(--line); border-radius: 28rpx;
+  height: 92rpx; padding: 0 28rpx; font-size: 28rpx;
+}
+.ph { color: var(--faint); }
+.paste { margin: 20rpx 0; }
+.err { color: #d2576b; font-size: 26rpx; text-align: center; margin-top: 24rpx; }
+.foot { color: var(--faint); font-size: 22rpx; text-align: center; margin-top: 40rpx; }

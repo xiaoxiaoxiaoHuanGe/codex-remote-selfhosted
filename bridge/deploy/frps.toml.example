@@ -1,0 +1,27 @@
+# frps — runs on the Tencent Cloud server (example.com).
+# Copy to /etc/frp/frps.toml and fill in __FRP_TOKEN__.
+#
+# Only bindPort (7000) faces the internet. Tunneled proxies bind to localhost
+# (proxyBindAddr) so the bridge is reachable ONLY through nginx over TLS.
+
+bindPort = 7000
+
+# Tunneled TCP proxies bind here, NOT 0.0.0.0 — keeps the bridge off the public net.
+proxyBindAddr = "127.0.0.1"
+
+# Shared secret with frpc (the Mac). Must match frpc.toml.
+# Generate with: openssl rand -hex 32
+auth.method = "token"
+auth.token = "__FRP_TOKEN__"
+
+# Require frpc to use TLS for the control/data channel.
+transport.tls.force = true
+
+# Only permit the single port we tunnel; reject anything else.
+allowPorts = [{ start = 8700, single = 8700 }]
+
+# Optional admin dashboard, bound to localhost (view via `ssh -L 7500:localhost:7500`).
+# webServer.addr = "127.0.0.1"
+# webServer.port = 7500
+# webServer.user = "admin"
+# webServer.password = "__SET_A_STRONG_PASSWORD__"  # generate: openssl rand -hex 16

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.codexbridge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BRIDGE_BIN__</string>
+    <string>-codex</string>
+    <string>__CODEX_BIN__</string>
+    <string>serve</string>
+    <string>-addr</string>
+    <string>127.0.0.1:8767</string>
+  </array>
+
+  <!-- Token injected via env so it never shows up in `ps` / process args. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CODEX_BRIDGE_TOKEN</key>
+    <string>__BRIDGE_TOKEN__</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- Throttle respawns so a hard failure (bad codex path, expired auth, port in
+       use) can't tight-loop and flood the log. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/bridge.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/bridge.err.log</string>
+</dict>
+</plist>

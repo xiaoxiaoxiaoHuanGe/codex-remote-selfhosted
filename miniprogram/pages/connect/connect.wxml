@@ -1,0 +1,19 @@
+<view class="wrap">
+  <view class="logo mono">&gt;_</view>
+  <view class="h1">连接你的电脑</view>
+  <view class="sub">扫描电脑托盘的二维码，或粘贴访问令牌</view>
+
+  <button class="btn-dark scan" bindtap="scan">扫码连接</button>
+
+  <view class="or"><view class="ln"></view><text>或手动输入</text><view class="ln"></view></view>
+
+  <input class="inp mono" placeholder="粘贴访问令牌" placeholder-class="ph"
+         value="{{token}}" bindinput="onInput" />
+  <button class="btn-ghost paste" bindtap="paste">从剪贴板粘贴</button>
+  <button class="btn-primary {{connecting ? 'disabled' : ''}}" disabled="{{connecting}}" bindtap="connect">
+    {{connecting ? '连接中…' : '连接'}}
+  </button>
+
+  <view wx:if="{{error}}" class="err">连接失败：{{error}}</view>
+  <view class="foot">令牌由设备管理员提供 · {{host}}</view>
+</view>

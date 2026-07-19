@@ -1,0 +1,85 @@
+name: Bug 报告
+description: 功能异常、崩溃或与文档不符的行为
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。**请勿**在此粘贴真实 token、私钥、中继配置或可利用细节。
+        安全漏洞请走 [SECURITY.md](../SECURITY.md)。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 简述
+      description: 一句话说明出了什么问题
+      placeholder: 例如：局域网重连后审批弹窗不出现
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 尽量最小可复现
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: 涉及组件
+      multiple: true
+      options:
+        - bridge (codexbridge)
+        - hub (codexhub)
+        - menubar / tray
+        - Flutter app
+        - miniprogram
+        - deploy / frp / nginx
+        - docs
+        - other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: commit SHA、tag，或大约日期
+      placeholder: main @ abc1234 / 2026-07-19
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      description: OS、Codex 版本、Go/Flutter 版本、连接方式（LAN / 中继）等
+      placeholder: |
+        - Desktop OS:
+        - Phone OS:
+        - Codex:
+        - Link: LAN / relay
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志（已脱敏）
+      description: 删除 token、域名中的隐私部分后再粘贴
+      render: text
+    validations:
+      required: false

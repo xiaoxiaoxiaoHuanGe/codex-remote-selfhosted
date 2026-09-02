@@ -38,7 +38,7 @@ import (
 
 // config is the resolved per-machine identity the panel needs.
 type config struct {
-	machineID, machineName, hub, token, agentKey, host string
+	machineID, machineName, hub, token, agentKey, host, transportScheme string
 	// license mode: where the per-machine credential lives (CRED_FILE, default
 	// <configdir>/machine-cred) and the codexbridge binary that runs `activate`
 	// (BRIDGE, default per-OS install path).
@@ -56,9 +56,10 @@ func (c config) activated() bool {
 	return err == nil && len(strings.TrimSpace(string(b))) > 0
 }
 
-// hostIsBareIP reports whether host (possibly "ip:port") is a bare IP literal. A
-// bare IP has no TLS cert, so the relay there is reached over ws/http (not wss/https)
-// — needed for a mainland high-port relay before a domain + cert is set up.
+// hostIsBareIP reports whether host (possibly "ip:port") is a bare IP literal.
+// It remains useful for legacy HTTP status probing, but it must not decide the
+// phone URL scheme: a public IP can terminate TLS when nginx/OpenResty exposes
+// a wss endpoint on it.
 func hostIsBareIP(host string) bool {
 	h := host
 	if i := strings.LastIndex(h, ":"); i >= 0 {
@@ -68,20 +69,22 @@ func hostIsBareIP(host string) bool {
 }
 
 func (c config) wsScheme() string {
-	if hostIsBareIP(c.host) {
+	if c.transportScheme == "ws" {
 		return "ws"
 	}
 	return "wss"
 }
 
 func (c config) httpScheme() string {
-	if hostIsBareIP(c.host) {
+	if c.wsScheme() == "ws" {
 		return "http"
 	}
 	return "https"
 }
 
-func (c config) phoneURL() string { return c.wsScheme() + "://" + c.host + "/ws?token=" + c.token }
+func (c config) phoneURL() string {
+	return c.wsScheme() + "://" + c.host + "/ws?token=" + url.QueryEscape(c.token)
+}
 
 func (c config) statusURL() string {
 	return c.httpScheme() + "://" + c.host + "/machines?key=" + url.QueryEscape(c.agentKey)
@@ -91,6 +94,7 @@ func (c config) statusURL() string {
 // "not configured" so the UI can guide the user instead of silently doing nothing.
 func loadConfig() (config, error) {
 	var c config
+	c.transportScheme = "wss"
 	path := defaultConfigPath()
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -135,6 +139,12 @@ func loadConfig() (config, error) {
 	}
 	if u, err := url.Parse(c.hub); err == nil && u.Host != "" {
 		c.host = u.Host
+		switch strings.ToLower(u.Scheme) {
+		case "ws", "http":
+			c.transportScheme = "ws"
+		case "wss", "https":
+			c.transportScheme = "wss"
+		}
 	} else {
 		c.host = "relay.example.com"
 	}

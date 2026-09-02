@@ -13,15 +13,27 @@ dependencies:
   flutter_secure_storage: ^9.2.2
   cupertino_icons: ^1.0.6
   flutter_markdown: ^0.7.1
-  video_player: ^2.8.0
-  image_picker: ^1.1.0
-  speech_to_text: ^6.6.0
+  video_player: ^2.14.0
+  image_picker: ^1.2.3
+  speech_to_text: ^7.4.0
   # 3.5.x is the last line built for AGP 7 (4.x needs AGP 8); QR scan on connect.
   mobile_scanner: ^3.5.7
   # E2EE control-plane: cryptography for the XChaCha20-Poly1305 envelope + HKDF +
   # X25519 device keypair; pinenacl for the NaCl box that unseals the paired PSK.
   cryptography: ^2.7.0
-  pinenacl: ^0.5.1 # 0.6.0 needs Dart 3.4; 0.5.x supports the bundled 3.3 SDK
+  pinenacl: ^0.6.0 # Compatible with the bundled Dart 3.13 SDK.
+
+dependency_overrides:
+  # flutter_secure_storage_windows 3.1.2 allows win32 5.x. Version 5.5.4
+  # removes the deprecated UnmodifiableUint8ListView usage without changing
+  # the secure-storage plugin API.
+  win32: 5.5.4
+  # path_provider_android 2.3.x brings jni and its CMake model; 2.2.4 is the
+  # existing Android implementation line without that native build step.
+  path_provider_android: 2.2.18
+  # The older transitive version still references Flutter's removed v1
+  # embedding Registrar API.
+  flutter_plugin_android_lifecycle: 2.0.35
 
 dev_dependencies:
   flutter_test:

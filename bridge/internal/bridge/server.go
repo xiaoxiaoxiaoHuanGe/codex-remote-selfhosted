@@ -94,6 +94,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -132,6 +133,11 @@ type Server struct {
 	// mediaCache is where stripInlineMedia stages base64 images pulled out of
 	// thread frames for lazy /file fetch (within fileRoots; "" disables strip).
 	mediaCache string
+
+	// modelCatalog is refreshed from this bridge's app-server on a phone request.
+	// Until that succeeds it contains only the legacy compatibility fallback.
+	modelMu      sync.RWMutex
+	modelCatalog map[string]modelCapability
 
 	// allowAutoReview gates the approval="auto" → auto_review path. Default false:
 	// a client can NEVER swap the human approval gate for an automated reviewer.
@@ -260,7 +266,7 @@ type inbound struct {
 	Platform  string   `json:"platform"`  // registerPush: "ios" | "android"
 	// prompt turn-hints from the phone composer (optional; clamped server-side).
 	Effort   string `json:"effort"`   // low | medium | high | xhigh
-	Model    string `json:"model"`    // gpt-5.5 | gpt-5 | gpt-5-mini
+	Model    string `json:"model"`    // exact model id returned by app-server model/list
 	Speed    string `json:"speed"`    // fast | standard
 	Approval string `json:"approval"` // default | auto | full | custom
 	// read: turn-window bounds. Limit>0 → at most N turns per frame so a heavy
@@ -278,19 +284,20 @@ type inbound struct {
 // AddDeviceToken before serving.
 func NewServer(cx *appserver.Client, token string) *Server {
 	s := &Server{
-		cx:         cx,
-		tokens:     make(map[string]string),
-		clients:    make(map[*conn]struct{}),
-		maxConn:    8,
-		approvals:  make(map[string]*pendingApproval),
-		apTimeout:  180 * time.Second,
-		resumed:    make(map[string]bool),
-		turns:      make(map[string]string),
-		turnOwner:  make(map[string]string),
-		pushes:     make(map[string]PushReg),
-		pusher:     LogPusher{},
-		fileRoots:  mediaRoots(),
-		mediaCache: mediaCacheDir(),
+		cx:           cx,
+		tokens:       make(map[string]string),
+		clients:      make(map[*conn]struct{}),
+		maxConn:      8,
+		approvals:    make(map[string]*pendingApproval),
+		apTimeout:    180 * time.Second,
+		resumed:      make(map[string]bool),
+		turns:        make(map[string]string),
+		turnOwner:    make(map[string]string),
+		pushes:       make(map[string]PushReg),
+		pusher:       LogPusher{},
+		fileRoots:    mediaRoots(),
+		mediaCache:   mediaCacheDir(),
+		modelCatalog: fallbackModelCapabilities(),
 		// Operator-side opt-in (env, never a client field): only when explicitly
 		// enabled may a remote turn use the auto_review reviewer instead of a human.
 		allowAutoReview: os.Getenv("CODEX_ALLOW_AUTO_REVIEW") == "1",
@@ -816,6 +823,33 @@ func threadStats(raw json.RawMessage) (int, string) {
 
 func (s *Server) handle(ctx context.Context, c *conn, in inbound) {
 	switch in.Type {
+	case "models":
+		// Keep the model picker tied to the app-server running on this machine;
+		// never infer availability from the phone's build-time strings.
+		models, err := s.cx.ModelList(ctx)
+		if err != nil {
+			s.setFallbackModels()
+			c.push(map[string]any{
+				"type": "models", "source": "fallback",
+				"error": "model/list unavailable: " + err.Error(),
+				"data":  s.modelWireFallback(),
+			})
+			return
+		}
+		catalog, wire := modelCapabilities(models)
+		if len(catalog) == 0 {
+			s.setFallbackModels()
+			c.push(map[string]any{
+				"type": "models", "source": "fallback",
+				"error": "model/list returned no visible models",
+				"data":  s.modelWireFallback(),
+			})
+			return
+		}
+		s.modelMu.Lock()
+		s.modelCatalog = catalog
+		s.modelMu.Unlock()
+		c.push(map[string]any{"type": "models", "source": "app-server", "data": wire})
 	case "list":
 		data, err := s.activeThreadData(ctx)
 		if err != nil {
@@ -1075,8 +1109,10 @@ func (s *Server) handlePrompt(ctx context.Context, c *conn, in inbound) {
 	// Bind this thread's turn to the requesting device so only it can answer the
 	// turn's approvals (Phase 6). Survives reconnect because it's keyed on device.
 	s.setTurnOwner(threadID, c.device)
+	model := s.sanitizeModel(in.Model)
+	effort := s.sanitizeEffort(model, in.Effort)
 	s.audit("prompt thread=%s device=%s conn=%s images=%d effort=%s model=%s tier=%s approval=%s(clamped=%v)",
-		threadID, c.device, c.id, imgN, sanitizeEffort(in.Effort), sanitizeModel(in.Model),
+		threadID, c.device, c.id, imgN, effort, model,
 		serviceTierFor(in.Speed), pol.approvalPolicy, pol.clamped)
 	c.push(map[string]any{"type": "promptAccepted", "threadId": threadID})
 
@@ -1088,9 +1124,9 @@ func (s *Server) handlePrompt(ctx context.Context, c *conn, in inbound) {
 		ApprovalPolicy:    pol.approvalPolicy,
 		ApprovalsReviewer: pol.reviewer,
 		SandboxPolicy:     pol.sandboxPolicy,
-		Effort:            sanitizeEffort(in.Effort),
+		Effort:            effort,
 		Summary:           "auto",
-		Model:             sanitizeModel(in.Model),
+		Model:             model,
 		ServiceTier:       serviceTierFor(in.Speed),
 	})
 	if err != nil {
@@ -1258,20 +1294,63 @@ func dirIsOrUnder(real, base string) bool {
 	return strings.HasPrefix(strings.ToLower(real), strings.ToLower(base)+string(os.PathSeparator))
 }
 
-// sanitizeEffort whitelists the ReasoningEffort enum; anything else → "" (omit).
-func sanitizeEffort(e string) string {
-	switch e {
-	case "none", "minimal", "low", "medium", "high", "xhigh":
-		return e
+func (s *Server) setFallbackModels() {
+	s.modelMu.Lock()
+	s.modelCatalog = fallbackModelCapabilities()
+	s.modelMu.Unlock()
+}
+
+func (s *Server) modelWireFallback() []map[string]any {
+	s.modelMu.RLock()
+	defer s.modelMu.RUnlock()
+	ids := make([]string, 0, len(s.modelCatalog))
+	for id := range s.modelCatalog {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		m := s.modelCatalog[id]
+		out = append(out, map[string]any{
+			"id": m.ID, "label": m.Label, "efforts": sortedKeys(m.Efforts),
+			"defaultEffort": m.DefaultEffort, "default": m.IsDefault,
+		})
+	}
+	return out
+}
+
+// sanitizeModel only accepts IDs returned by this machine's app-server. The
+// fallback catalog keeps old bridge/app combinations working when model/list is
+// unavailable, while a successful refresh immediately admits new desktop IDs.
+func (s *Server) sanitizeModel(m string) string {
+	m = strings.TrimSpace(m)
+	s.modelMu.RLock()
+	defer s.modelMu.RUnlock()
+	if _, ok := s.modelCatalog[m]; ok {
+		return m
 	}
 	return ""
 }
 
-// sanitizeModel whitelists the models offered by the phone composer.
-func sanitizeModel(m string) string {
-	switch m {
-	case "gpt-5.5", "gpt-5", "gpt-5-mini":
-		return m
+// sanitizeEffort validates against the selected model's advertised capabilities
+// so newer values such as max/ultra are forwarded only where app-server allows
+// them. Unknown/invalid values are omitted rather than guessed.
+func (s *Server) sanitizeEffort(model, effort string) string {
+	effort = strings.TrimSpace(effort)
+	s.modelMu.RLock()
+	m, ok := s.modelCatalog[model]
+	s.modelMu.RUnlock()
+	if ok {
+		if m.Efforts[effort] {
+			return effort
+		}
+		return ""
+	}
+	// If the phone omitted a model, retain the historical safe enum for the
+	// desktop-configured default model.
+	switch effort {
+	case "none", "minimal", "low", "medium", "high", "xhigh":
+		return effort
 	}
 	return ""
 }

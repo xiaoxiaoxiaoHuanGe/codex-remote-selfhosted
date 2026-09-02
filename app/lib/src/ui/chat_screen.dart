@@ -130,7 +130,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.16),
+                  color: Colors.black.withValues(alpha: 0.16),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),
@@ -424,7 +424,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
-          ChatComposer(onSend: _onSend),
+          ListenableBuilder(
+            listenable: bridge,
+            builder: (context, _) => ChatComposer(
+              onSend: _onSend,
+              models: bridge.models,
+              modelSource: bridge.modelSource,
+              modelsLoading: bridge.modelsLoading,
+              modelError: bridge.modelError,
+            ),
+          ),
         ],
       ),
     );
@@ -1435,7 +1444,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       decoration: BoxDecoration(
         color: const Color(0xFFFDF6EC),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Cx.warn.withOpacity(0.5)),
+        border: Border.all(color: Cx.warn.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

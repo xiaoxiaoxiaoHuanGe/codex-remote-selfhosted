@@ -24,6 +24,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer c.Close(websocket.StatusNormalClosure, "done")
+	c.SetReadLimit(32 << 20)
 
 	firstID := make(chan string, 1)
 	go func() {

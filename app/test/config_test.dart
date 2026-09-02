@@ -21,4 +21,19 @@ void main() {
     expect(lanWsUrl(' tok ', '192.168.1.5:8767'),
         'ws://192.168.1.5:8767/ws?token=tok');
   });
+
+  test('公网地址统一为 wss 并保留主机端口、编码 token', () {
+    for (final input in [
+      '117.0.0.1:7446',
+      'https://117.0.0.1:7446',
+      'wss://117.0.0.1:7446',
+    ]) {
+      final u = Uri.parse(wsUrlForToken('tok ?&=', host: input));
+      expect(u.scheme, 'wss');
+      expect(u.host, '117.0.0.1');
+      expect(u.port, 7446);
+      expect(u.path, '/ws');
+      expect(u.queryParameters['token'], 'tok ?&=');
+    }
+  });
 }

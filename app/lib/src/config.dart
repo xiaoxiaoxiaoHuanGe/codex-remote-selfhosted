@@ -15,10 +15,9 @@ const String kRelayHost =
 String relayHostOr(String? host) =>
     (host == null || host.trim().isEmpty) ? kRelayHost : host.trim();
 
-/// A bare IPv4 host (optionally `ip:port`) has no TLS certificate, so it must be
-/// reached over plain `ws://`; named hosts (domains) use `wss://`. This lets the app
-/// talk to an IP-only relay before its domain + cert is set up, then auto-upgrades
-/// to wss once a real host is used.
+/// Whether a value is a bare IPv4 host. LAN candidates still use plain `ws://`;
+/// this helper is kept for callers that need to classify those candidates. A
+/// public IP may still terminate TLS, so it must not force the relay URL to `ws`.
 bool hostIsBareIp(String host) {
   final h = host.split(':').first; // drop an optional :port
   final parts = h.split('.');
@@ -29,13 +28,22 @@ bool hostIsBareIp(String host) {
   });
 }
 
-/// Build the phone's WebSocket URL from a token, optionally on a specific relay
-/// host (empty/null → [kRelayHost]). Scheme is `wss://` for domains, `ws://` for a
-/// bare IP (no cert possible there yet).
+/// Build the phone's public WebSocket URL from a token and an address. The
+/// address may be a bare host, `https://…`, or `wss://…`; public endpoints always
+/// use `wss://`, including an IP whose TLS certificate is terminated upstream.
+/// LAN direct candidates use [lanWsUrl] separately and remain plain `ws://`.
 String wsUrlForToken(String token, {String? host}) {
-  final h = relayHostOr(host);
-  final scheme = hostIsBareIp(h) ? 'ws' : 'wss';
-  return '$scheme://$h/ws?token=${token.trim()}';
+  var raw = relayHostOr(host);
+  if (!raw.contains('://')) raw = 'https://$raw';
+  final u = Uri.parse(raw);
+  if (u.host.isEmpty) throw const FormatException('连接地址缺少主机名');
+  return Uri(
+    scheme: 'wss',
+    host: u.host,
+    port: u.hasPort ? u.port : null,
+    path: '/ws',
+    queryParameters: {'token': token.trim()},
+  ).toString();
 }
 
 /// Extract the token from a full ws URL (used to migrate older stored URLs).
@@ -96,8 +104,16 @@ String? hostFromWsUrl(String url) {
 
 /// Build the direct-LAN ws URL for one candidate ("ip:port"). Always plain
 /// ws:// — a LAN IP has no cert; the E2EE layer protects the payload.
-String lanWsUrl(String token, String hostPort) =>
-    'ws://$hostPort/ws?token=${token.trim()}';
+String lanWsUrl(String token, String hostPort) {
+  final u = Uri.parse('ws://$hostPort');
+  return Uri(
+    scheme: 'ws',
+    host: u.host,
+    port: u.hasPort ? u.port : null,
+    path: '/ws',
+    queryParameters: {'token': token.trim()},
+  ).toString();
+}
 
 /// LAN direct-connect candidates from a scanned connect string (the comma-
 /// separated `lan=` param the tray adds). Empty for old QRs / parse failures.
@@ -105,7 +121,11 @@ List<String> lanFromConnectString(String s) {
   try {
     final v = Uri.parse(s.trim()).queryParameters['lan'];
     if (v == null || v.isEmpty) return const [];
-    return v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return v
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   } catch (_) {
     return const [];
   }

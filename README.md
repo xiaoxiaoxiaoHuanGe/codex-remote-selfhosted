@@ -6,6 +6,8 @@
 
 自托管的 **Codex 手机远程控制**：用手机 App 操作本机 [Codex](https://openai.com/codex)——实时查看进行中的操作、读写会话、发送提示词、内嵌预览图片/视频，并审批命令执行。
 
+这是基于 [yunyuchen/codex-remote](https://github.com/yunyuchen/codex-remote) 的社区维护衍生版本，重点维护已验证的自托管 Direct/WSS、frp 穿透、Windows 托盘二维码配对和动态模型同步能力。本项目不是 OpenAI 官方产品，也不代表 OpenAI 官方立场。
+
 远程链路完全自托管，**不走 OpenAI 官方账号中继**。AI 算力与鉴权沿用桌面端已登录的 ChatGPT / Codex 账号，**无额外 API 费用**。
 
 > 仓库内的 `relay.example.com`、`203.0.113.10` 均为占位符，部署时请替换为你自己的域名与服务器。
@@ -16,9 +18,11 @@
 
 - [功能特性](#功能特性)
 - [架构](#架构)
+- [公网穿透是怎么工作的](#公网穿透是怎么工作的)
 - [仓库结构](#仓库结构)
 - [环境要求](#环境要求)
 - [快速开始](#快速开始)
+- [Windows 端启动与手机连接](#windows-端启动与手机连接)
 - [构建可分发 App](#构建可分发-app)
 - [公网部署](#公网部署)
 - [安全模型](#安全模型)
@@ -56,6 +60,30 @@ iPhone / Android
 - 核心思路：复用桌面 Codex 内部的 `codex app-server`（JSON-RPC），不破解客户端  
   可行性结论见 [FINDINGS.md](./FINDINGS.md)
 
+## 公网穿透是怎么工作的
+
+如果手机和 Windows 电脑不在同一个 Wi‑Fi，手机不能直接访问电脑的 `127.0.0.1`。本项目使用一台有公网 IP 的 Linux 服务器作为入口：
+
+1. 手机通过 HTTPS/WSS 连接服务器的 nginx。
+2. nginx 把 `/ws` 和 `/file` 请求转给服务器本机的 frps 映射端口。
+3. Windows 上的 frpc 主动连接 frps，并把本机 `codexbridge` 的端口通过加密隧道映射出去。
+4. frps 通过这条隧道把请求送到 Windows 的 codexbridge。
+5. codexbridge 再连接本机 Codex app-server。
+
+可以把 frpc/frps 理解成“把电脑里的本地服务接到公网入口的一条加密管道”。frpc 负责从电脑向外建立管道，frps 负责在公网服务器接收和转发流量；它们不是 Codex 协议本身。
+
+本仓库不复制 frp/frpc 源码，部署时按系统安装对应的官方版本，并使用仓库中的示例配置。frp 是可选的第三方组件，版权和许可证请以 [frp 官方仓库](https://github.com/fatedier/frp) 及其 [Apache-2.0 许可证](https://github.com/fatedier/frp/blob/dev/LICENSE)为准。
+
+### 三种连接方式
+
+| 方式 | 适用场景 | 手机连接地址 |
+|------|----------|--------------|
+| 局域网直连 | 手机和电脑在同一网络 | `ws://电脑局域网地址:8767/ws?token=...` |
+| Direct 公网 | 公网入口直接转发到 bridge | `wss://你的域名或IP:端口/ws?token=...` |
+| frp + nginx | 推荐的自托管公网部署 | `wss://你的域名/ws?token=...` |
+
+无论使用哪种方式，`CODEX_BRIDGE_TOKEN` 都只用于 bridge 鉴权。请使用自己的占位符或环境变量，不要把真实 token 写入源码、README、二维码截图或 APK。
+
 ## 仓库结构
 
 ```text
@@ -79,12 +107,34 @@ codex-remote/
 
 ## 环境要求
 
+### 已验证的复现基线
+
+下面这组环境是本项目当前已实际验证通过的基线。想复刻同样效果，建议先保持版本一致：
+
 | 组件 | 要求 |
 |------|------|
+| 操作系统 | Windows 11 x64 |
+| Flutter | 3.47.2 stable |
+| Dart | 3.13.2 |
+| Java | Eclipse Temurin 17.0.20 |
+| Android SDK | 已安装并能被 Flutter 识别；示例路径为 `E:\Android\sdk` |
+| Go | 1.26 或更高版本 |
+| frp/frpc | Windows 侧已验证 `0.71.0`；frps 与 frpc 建议使用相同版本 |
 | 桌面端 | 已安装并登录 [Codex 桌面版](https://openai.com/codex)（推荐使用 App 自带 CLI） |
-| 桥 | Go **1.26+** |
-| 手机 App | Flutter **3.3+** / Dart **3.3+** |
-| 公网中继（可选） | Linux 服务器、域名、nginx、frps；桌面侧 `frpc`（`brew install frpc`） |
+| 手机 App | Android 手机，USB 调试或可安装 Release APK |
+| 公网中继 | Linux 服务器、域名、TLS 证书、nginx/OpenResty、frps |
+
+先检查环境：
+
+```powershell
+flutter --version
+flutter doctor -v
+java -version
+go version
+frpc.exe --version
+```
+
+如果这些版本和上表差异较大，仍可能可以运行，但不再属于本 README 保证的复现基线；尤其是 Codex Desktop 更新后，app-server 的模型列表和 RPC 能力可能变化。
 
 ## 快速开始
 
@@ -93,8 +143,8 @@ codex-remote/
 桥**必须**配置 token；未配置时拒绝启动（生产路径不会静默生成随机 token）。
 
 ```bash
-git clone https://github.com/yunyuchen/codex-remote.git
-cd codex-remote/bridge
+git clone https://github.com/xiaoxiaoxiaoHuanGe/codex-remote-selfhosted.git
+cd codex-remote-selfhosted/bridge
 
 # 只读：列出会话 / 读取某个会话
 go run ./cmd/codexbridge list
@@ -144,6 +194,85 @@ python3 scripts/probe_list.py
 python3 scripts/probe_read.py <THREAD_ID>
 ```
 
+## Windows 端启动与手机连接
+
+下面是“Windows 电脑 + 公网服务器 + frpc + Android App”的最短流程。命令中的地址、端口和 token 都是示例，请替换成你自己的值。
+
+### 1. 编译并启动 codexbridge
+
+在 Windows PowerShell 中：
+
+```powershell
+cd D:\codex-remote\bridge
+go build -o codexbridge.exe ./cmd/codexbridge
+
+# 只在当前 PowerShell 会话中设置；不要写入源码或提交到 Git
+$env:CODEX_BRIDGE_TOKEN = "YOUR_BRIDGE_TOKEN"
+.\codexbridge.exe -codex "C:\Path\To\codex.exe" serve -addr 127.0.0.1:8767
+```
+
+如果 `codex.exe` 已在 PATH 中，可以省略 `-codex`。bridge 正常启动后，只监听 Windows 本机的 `127.0.0.1:8767`。
+
+### 2. 启动 frpc
+
+在公网服务器上运行 frps，在 Windows 上运行 frpc。先复制示例配置：
+
+```powershell
+cd D:\codex-remote\bridge\deploy
+Copy-Item .\frpc.toml.example .\frpc.toml
+notepad .\frpc.toml
+```
+
+把示例中的服务器地址、FRP token、远端映射端口按 [公网部署文档](./bridge/deploy/DEPLOY.md) 填好，然后运行：
+
+```powershell
+frpc.exe -c .\frpc.toml
+```
+
+`frpc.toml` 已被 `.gitignore` 忽略，因为其中会包含 FRP token。不要把真实配置提交到公开仓库。
+
+### 3. 配置 Windows 托盘程序
+
+托盘程序读取 `%ProgramData%\codex-remote\menubar.env`。Direct 公网模式可以使用下面的最小配置：
+
+```text
+MACHINE_ID=my-windows-pc
+MACHINE_NAME=我的 Windows 电脑
+HUB=wss://your-public-host:7446
+TOKEN=YOUR_BRIDGE_TOKEN
+LAN_ADDR=off
+```
+
+这里的 `HUB` 是历史配置字段名；Direct 模式下它只表示公网 WSS 的基础地址，不需要填写 `/agent`，也不需要 `AGENT_KEY` 或订阅码。托盘程序会据此生成：
+
+```text
+wss://your-public-host:7446/ws?token=YOUR_BRIDGE_TOKEN
+```
+
+编译并启动托盘：
+
+```powershell
+cd D:\codex-remote\bridge
+go build -ldflags="-H windowsgui" -o codexmenubar.exe ./cmd/codexmenubar
+.\codexmenubar.exe
+```
+
+看到托盘图标后，右键选择“显示二维码…”，手机 App 扫码即可；也可以选择“复制连接串”，在 App 的手工连接页面粘贴。
+
+### 4. Android App 连接
+
+手机和 Windows 不必在同一 Wi‑Fi。扫码或手工输入以下信息：
+
+- 电脑名称：随便填写一个便于识别的名称
+- 访问令牌：与 bridge 的 `CODEX_BRIDGE_TOKEN` 完全一致
+- 中继/Direct 地址：`wss://your-public-host:7446`、`https://your-public-host:7446` 或 `your-public-host:7446`
+
+App 会统一规范化为 `wss://your-public-host:7446/ws?token=...`，并把 token 存在手机安全存储中。若连接失败，先依次检查 bridge、frpc、服务器 nginx/WebSocket 转发和 token 是否一致。
+
+### 5. 如何确认连接成功
+
+连接成功后，App 应能看到桌面 Codex 的 sessions，并能读取 thread、发送 prompt 和接收实时回复。模型选择器会在 bridge 从 Codex app-server 获取成功时显示当前桌面端真实可用模型；获取失败时会明确提示并使用 fallback 列表。
+
 ## 构建可分发 App
 
 **切勿把本机 token 打进安装包。** 配对 token 存在手机钥匙串，由用户扫桌面托盘二维码写入。
@@ -152,6 +281,25 @@ python3 scripts/probe_read.py <THREAD_ID>
 ./build-apk-release.sh            # 默认输出到 ./dist/
 ./build-apk-release.sh ~/Desktop  # 或指定目录
 ```
+
+在 Windows 上也可以直接构建：
+
+```powershell
+cd D:\codex-remote\app
+flutter clean
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --release
+```
+
+成功后 APK 位于：
+
+```text
+D:\codex-remote\app\build\app\outputs\flutter-apk\app-release.apk
+```
+
+构建命令不会把 Bridge Token 写入 APK。Token 由用户扫码或手工连接时输入，并保存在手机安全存储中。
 
 脚本**不传** `--dart-define=TOKEN`，并带安全网：若产物中扫到本机 token 则拒绝输出。
 
@@ -164,6 +312,8 @@ cd app && flutter build apk --release \
 ## 公网部署
 
 完整步骤见 **[bridge/deploy/DEPLOY.md](./bridge/deploy/DEPLOY.md)**。
+
+第一次部署时，建议先完成局域网连接，再配置公网服务器和 frp。这样可以把“App、bridge、Codex”本身的问题与“公网 DNS、证书、nginx、frp”问题分开排查。
 
 概要：
 
@@ -218,6 +368,8 @@ cd app && flutter build apk --release \
 ## 许可证
 
 本项目以 [MIT License](./LICENSE) 发布。
+
+本仓库保留上游项目的 MIT 许可和来源说明。第三方依赖（包括 Flutter/Dart 包、Go 模块、frp/frpc 和 nginx）仍受各自许可证约束；发布二进制时请同时遵守对应组件的许可证要求。
 
 ## 免责声明
 

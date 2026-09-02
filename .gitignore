@@ -1,4 +1,5 @@
 # secrets — NEVER commit
+bridge_token.txt
 bridge/deploy/secrets*.env
 bridge/deploy/agent-*.env
 bridge/deploy/*.env

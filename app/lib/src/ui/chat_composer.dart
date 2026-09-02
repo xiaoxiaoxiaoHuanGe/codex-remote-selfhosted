@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import 'theme.dart';
+import '../models/codex_model.dart';
 
 /// One picked image held in the composer: raw bytes (for the thumbnail) plus the
 /// data: URL that gets sent to the bridge.
@@ -22,8 +23,18 @@ class ChatComposer extends StatefulWidget {
   final void Function(String text, List<String> images, String effort,
       String model, String speed, String approval) onSend;
   final String hint;
+  final List<CodexModel> models;
+  final String modelSource;
+  final bool modelsLoading;
+  final String? modelError;
   const ChatComposer(
-      {super.key, required this.onSend, this.hint = '向 Codex 提问'});
+      {super.key,
+      required this.onSend,
+      this.hint = '向 Codex 提问',
+      this.models = const [],
+      this.modelSource = 'fallback',
+      this.modelsLoading = false,
+      this.modelError});
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -36,22 +47,17 @@ class _ChatComposerState extends State<ChatComposer> {
   static String _lastSpeed = 'fast';
   static String _lastApproval = 'default';
 
-  // value -> display label, mirroring the official Codex menus.
-  static const _efforts = {
+  // value -> display label. The available values themselves come from the
+  // connected app-server; these labels cover current and future enum values.
+  static const _effortLabels = {
+    'none': '无',
+    'minimal': '最少',
     'low': '低',
     'medium': '中等',
     'high': '高',
-    'xhigh': '极高'
-  };
-  static const _models = {
-    'gpt-5.5': 'GPT-5.5',
-    'gpt-5': 'GPT-5',
-    'gpt-5-mini': 'GPT-5 mini'
-  };
-  static const _modelShort = {
-    'gpt-5.5': '5.5',
-    'gpt-5': '5',
-    'gpt-5-mini': 'mini'
+    'xhigh': '极高',
+    'max': '最高',
+    'ultra': '极高（自动委派）',
   };
   static const _speeds = {'fast': '快速', 'standard': '标准'};
   static const _approvals = <_ApprovalMode>[
@@ -75,6 +81,42 @@ class _ChatComposerState extends State<ChatComposer> {
   late String _approval = _lastApproval;
   bool _hasText = false;
 
+  List<CodexModel> get _modelOptions =>
+      widget.models.isEmpty ? CodexModel.fallback() : widget.models;
+
+  CodexModel? get _selectedModel {
+    for (final model in _modelOptions) {
+      if (model.id == _model) return model;
+    }
+    return null;
+  }
+
+  List<String> get _currentEfforts {
+    final efforts = _selectedModel?.reasoningEfforts;
+    if (efforts == null || efforts.isEmpty) {
+      return const ['low', 'medium', 'high', 'xhigh'];
+    }
+    return efforts;
+  }
+
+  String _effortLabel(String effort) => _effortLabels[effort] ?? effort;
+
+  String _modelLabel(String id) => _selectedModel?.id == id
+      ? _selectedModel!.label
+      : _modelOptions
+          .firstWhere((m) => m.id == id,
+              orElse: () => CodexModel(
+                  id: id,
+                  label: id,
+                  reasoningEfforts: const [],
+                  defaultReasoningEffort: ''))
+          .label;
+
+  String _modelShortLabel() {
+    final label = _modelLabel(_model);
+    return label.startsWith('GPT-') ? label.substring(4) : label;
+  }
+
   final SpeechToText _speech = SpeechToText();
   bool _speechReady = false;
   bool _listening = false;
@@ -87,6 +129,34 @@ class _ChatComposerState extends State<ChatComposer> {
       final has = _ctrl.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final options = _modelOptions;
+    if (options.isEmpty) return;
+    var model = _model;
+    if (!options.any((m) => m.id == model)) {
+      model = options
+          .firstWhere((m) => m.isDefault, orElse: () => options.first)
+          .id;
+    }
+    final selected = options.firstWhere((m) => m.id == model);
+    var effort = _effort;
+    if (selected.reasoningEfforts.isNotEmpty &&
+        !selected.reasoningEfforts.contains(effort)) {
+      effort = selected.defaultReasoningEffort;
+      if (effort.isEmpty || !selected.reasoningEfforts.contains(effort)) {
+        effort = selected.reasoningEfforts.first;
+      }
+    }
+    if (model != _model || effort != _effort) {
+      setState(() {
+        _model = _lastModel = model;
+        _effort = _lastEffort = effort;
+      });
+    }
   }
 
   @override
@@ -162,12 +232,16 @@ class _ChatComposerState extends State<ChatComposer> {
 
   Future<void> _openSmartMenu() async {
     FocusScope.of(context).unfocus();
+    final efforts = _currentEfforts;
     final r = await _menuAt<String>(_smartKey, [
       _headerItem('智能'),
-      for (final e in _efforts.entries)
-        _checkItem('effort:${e.key}', e.value, _effort == e.key),
+      if (widget.modelsLoading) _headerItem('正在从 Codex 刷新模型…'),
+      if (widget.modelSource != 'app-server' && widget.modelError != null)
+        _headerItem('刷新失败，当前使用备用列表'),
+      for (final effort in efforts)
+        _checkItem('effort:$effort', _effortLabel(effort), _effort == effort),
       const PopupMenuDivider(),
-      _navItem('model', '模型', _models[_model] ?? ''),
+      _navItem('model', '模型', _modelLabel(_model)),
       _navItem('speed', '速度', _speeds[_speed] ?? ''),
     ]);
     if (r == null || !mounted) return;
@@ -182,11 +256,27 @@ class _ChatComposerState extends State<ChatComposer> {
 
   Future<void> _openModelMenu() async {
     final r = await _menuAt<String>(_smartKey, [
-      _headerItem('模型'),
-      for (final m in _models.entries)
-        _checkItem(m.key, m.value, _model == m.key),
+      _headerItem(widget.modelSource == 'app-server' ? '模型' : '模型（备用列表）'),
+      if (widget.modelsLoading) _headerItem('正在从 Codex 刷新…'),
+      if (widget.modelSource != 'app-server' && widget.modelError != null)
+        _headerItem('刷新失败，当前使用备用列表'),
+      for (final m in _modelOptions) _checkItem(m.id, m.label, _model == m.id),
     ]);
-    if (r != null && mounted) setState(() => _lastModel = _model = r);
+    if (r != null && mounted) {
+      final selected = _modelOptions.firstWhere((m) => m.id == r);
+      var effort = _effort;
+      if (selected.reasoningEfforts.isNotEmpty &&
+          !selected.reasoningEfforts.contains(effort)) {
+        effort = selected.defaultReasoningEffort;
+        if (effort.isEmpty || !selected.reasoningEfforts.contains(effort)) {
+          effort = selected.reasoningEfforts.first;
+        }
+      }
+      setState(() {
+        _lastModel = _model = r;
+        _lastEffort = _effort = effort;
+      });
+    }
   }
 
   Future<void> _openSpeedMenu() async {
@@ -344,11 +434,13 @@ class _ChatComposerState extends State<ChatComposer> {
         _ctrl.text = base.isEmpty ? spoken : '$base $spoken';
         _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
       },
-      localeId: 'zh_CN',
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 4),
-      listenOptions:
-          SpeechListenOptions(partialResults: true, cancelOnError: true),
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        cancelOnError: true,
+        localeId: 'zh_CN',
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 4),
+      ),
     );
   }
 
@@ -478,7 +570,7 @@ class _ChatComposerState extends State<ChatComposer> {
             children: [
               const Icon(Icons.bolt_rounded, size: 16, color: Cx.textSecondary),
               const SizedBox(width: 2),
-              Text('${_modelShort[_model]} ${_efforts[_effort]}',
+              Text('${_modelShortLabel()} ${_effortLabel(_effort)}',
                   style: const TextStyle(
                       color: Cx.textSecondary,
                       fontSize: 13,

@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../config.dart';
 import '../models/machine.dart';
+import '../models/codex_model.dart';
 import '../models/session.dart';
 import 'connection_racer.dart';
 import 'secure_store.dart';
@@ -114,6 +115,12 @@ class BridgeClient extends ChangeNotifier {
   Future<void> _outChain = Future<void>.value();
 
   List<Session> sessions = [];
+  // The connected bridge populates this from its Codex app-server. Start with
+  // an explicit compatibility fallback so old bridges remain usable.
+  List<CodexModel> models = CodexModel.fallback();
+  String modelSource = 'fallback';
+  bool modelsLoading = false;
+  String? modelError;
   String? currentThreadId;
   final List<ChatItem> items = [];
   Approval? pendingApproval;
@@ -316,7 +323,9 @@ class BridgeClient extends ChangeNotifier {
       // challenge. Direct LAN always authenticates with the token query.
       final String? relayDial = relayUrl == null
           ? null
-          : (useDeviceAuth ? _deviceAuthUrl(relayUrl, deviceAuthKeyId) : relayUrl);
+          : (useDeviceAuth
+              ? _deviceAuthUrl(relayUrl, deviceAuthKeyId)
+              : relayUrl);
       final RaceOutcome<WebSocketChannel> out;
       if (willPair) {
         out = await _pairingDial(lanUrls, relayDial);
@@ -414,6 +423,7 @@ class BridgeClient extends ChangeNotifier {
   /// Post-connect bootstrap, run once the link can carry app frames (armed codec,
   /// legacy cleartext, or right after a successful pair).
   void _onReady() {
+    refreshModels();
     listSessions();
     // Recover after a drop: re-read the thread the user is viewing so a reply that
     // completed while we were disconnected shows up. Reuse the current tail bound
@@ -542,8 +552,20 @@ class BridgeClient extends ChangeNotifier {
 
   void syncNow() {
     if (state != ConnState.connected) return;
+    refreshModels();
     listSessions();
     refreshCurrentThread();
+  }
+
+  /// Ask the bridge for the model catalog exposed by this machine's Codex
+  /// app-server. A fallback response is explicit in [modelSource] and never
+  /// masquerades as a current app-server list.
+  void refreshModels() {
+    if (state != ConnState.connected || _ch == null) return;
+    modelsLoading = true;
+    modelError = null;
+    _send({'type': 'models'});
+    notifyListeners();
   }
 
   void refreshMediaAuth() {
@@ -769,6 +791,23 @@ class BridgeClient extends ChangeNotifier {
     // the reconnect backoff reset (see the note in connect()).
     _reconnectAttempts = 0;
     switch (m['type']) {
+      case 'models':
+        final data = (m['data'] as List?) ?? const [];
+        final parsed = data
+            .whereType<Map<String, dynamic>>()
+            .map(CodexModel.fromJson)
+            .where((model) => model.id.isNotEmpty)
+            .toList();
+        if (parsed.isNotEmpty) {
+          models = parsed;
+        } else {
+          models = CodexModel.fallback();
+        }
+        modelSource = m['source'] == 'app-server' ? 'app-server' : 'fallback';
+        final detail = m['error'];
+        modelError = detail is String && detail.isNotEmpty ? detail : null;
+        modelsLoading = false;
+        break;
       case 'sessions':
         final data = (m['data'] as List?) ?? const [];
         sessions = data
@@ -848,6 +887,18 @@ class BridgeClient extends ChangeNotifier {
         break;
       case 'error':
         error = (m['message'] as String?) ?? 'error';
+        // New bridges return a typed `models` fallback. This branch keeps the
+        // same visible fallback/error state when talking to an older bridge
+        // that only knows the generic unknown-type error.
+        final message = m['message'];
+        if (modelsLoading &&
+            message is String &&
+            message.startsWith('unknown type: models')) {
+          models = CodexModel.fallback();
+          modelSource = 'fallback';
+          modelError = '模型列表刷新失败，当前使用备用列表';
+          modelsLoading = false;
+        }
         turnRunning = false;
         _streamingAssistant = null;
         _streamingTool = null;

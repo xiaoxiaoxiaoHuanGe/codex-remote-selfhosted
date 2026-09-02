@@ -52,6 +52,20 @@
 - 鉴权、路径、沙箱相关改动必须带测试
 - 可分发客户端构建禁止 `--dart-define=TOKEN=...`
 
+## 本地配置、CI 与 APK 密钥
+
+- `.env`、`menubar.env`、`frpc.toml`、`frps.toml`、机器 token 和私钥均为本地文件，已加入忽略规则；提交前仍应使用 `git status` 和 `git diff --cached` 检查。
+- 当前公开 APK 构建不需要任何仓库 Secret。Bridge Token 由用户在本机运行 bridge 时注入，手机通过扫码或手工配对后存入设备安全存储。
+- 如果未来增加 GitHub Actions 或其他 CI，密钥只能通过 CI 平台的 Secrets 注入到需要它的服务器/部署步骤，禁止写进源码、README、构建参数或 Android 资源。
+- 尤其不要给公开 APK 使用 `--dart-define=TOKEN=...`；Dart define 会进入编译产物，反编译即可恢复。
+- 如果密钥曾经进入 Git 历史，仅删除文件是不够的：必须立即轮换密钥，并按凭据泄露流程清理历史和重新发布。
+
+## Codex 本地凭证边界
+
+Bridge 会启动本机的 `codex app-server`，由 Codex 进程按桌面端配置使用用户本地登录状态。Bridge 不读取、上传或通过 `/file` 提供 `~/.codex/auth.json`；`.codex` 也在远程工作目录拒绝列表中。可访问的 `~/.codex` 内容仅限明确的会话媒体目录，并且还要通过文件扩展名和内容类型检查。
+
+这不等于远程控制本身没有风险：Bridge 具备驱动本机 Codex 的能力。生产部署应使用最小的 `CODEX_WORKSPACE_ROOTS`，只允许项目目录，并妥善保护 Bridge Token；不要把本机凭证目录配置成工作区或媒体目录。
+
 ## 致谢
 
 负责任披露的研究者，可在修复说明中致谢（除非你希望匿名）。

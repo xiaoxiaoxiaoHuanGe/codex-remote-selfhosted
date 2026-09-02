@@ -1,5 +1,15 @@
 # secrets — NEVER commit
 bridge_token.txt
+Start-Codex-Remote-v3.1.bat
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/menubar.env
+**/frpc.toml
+**/frps.toml
+**/machine-*.token
+**/agent-key
 bridge/deploy/secrets*.env
 bridge/deploy/agent-*.env
 bridge/deploy/*.env

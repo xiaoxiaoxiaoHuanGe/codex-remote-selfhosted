@@ -138,7 +138,8 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://relay.example.com/file?path=/e
   绑定,断线重连仍有效)。另一台持别的 token 的连接能"看"但**应答会被拒并记审计**。
 - **审计日志**:连接/鉴权失败/发指令/审批与决定都打 `audit:` 前缀(`bridge.log` 里 grep
   `audit:` 即可复盘谁连过、批准过什么)。
-- **远程降权**:手机发起的 turn 强制 `approvalPolicy=untrusted` + `read-only` 沙箱。这是
+- **远程降权**:手机发起的 turn 固定使用 `workspace-write` 沙箱（允许工作区写入、沙箱内网络关闭），默认
+  `approvalPolicy=on-request`；full 模式钳制为 `on-failure`，auto_review 需桥端显式允许。这是
   **每个 turn** 级别的覆盖,所以即便 resume 一个本机 `danger-full-access` 的会话也会被降权。
 - **审批闸钳制**:手机的 accept/decline 会被映射成协议精确值,**绝不**转发
   `acceptForSession`/`approved_for_session`/`*_amendment` 这些"本会话永久放行"的选项——
@@ -152,7 +153,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://relay.example.com/file?path=/e
 
 > ⚠️ **token 即全部权限**:谁拿到 BRIDGE_TOKEN,就能读你所有桌面会话的历史和 cwd
 > (`thread/list` + `thread/read`),并能发起(降权后的)指令。务必妥善保管,怀疑泄露立刻轮换。
-> 当前是"单人单 token"模型;按设备区分身份/逐设备吊销留到 Phase 6。
+> 已支持逐设备 Token 和单独吊销，见本节配置说明。
 
 ### 轮换 token
 
@@ -170,4 +171,4 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://relay.example.com/file?path=/e
 | WS 连上即断 | 宝塔反代没开 WebSocket 开关;或 `proxy_read_timeout` 太小 |
 | App 401 | URL 里 token 与 secrets.env 不一致;或桥没读到 `CODEX_BRIDGE_TOKEN`(看 bridge.log 的 token 指纹) |
 | bridge.log 显示退出 `no pairing token` | launchd 没注入 env;重跑 `install-mac.sh` 重渲染 plist |
-| 视频/图片打不开 | 文件不在 `~/.codex`、`~/Documents` 白名单内(403) |
+| 视频/图片打不开 | 文件不在配置的媒体目录内，或类型检查失败(403)；`~/.codex` 根目录不开放 |
